@@ -1,52 +1,25 @@
-import os
-import subprocess
+name: Crear VM Windows
 
-def crear_vm_windows(nombre_vm, iso_windows, memoria_ram_gb, disco_duro_gb):
-    """
-    Crea una máquina virtual con Windows utilizando VirtualBox.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
 
-    Args:
-        nombre_vm (str): El nombre de la máquina virtual.
-        iso_windows (str): La ruta al archivo ISO de Windows.
-        memoria_ram_gb (int): La cantidad de memoria RAM en GB.
-        disco_duro_gb (int): El tamaño del disco duro en GB.
-    """
+jobs:
+  build:
+    runs-on: ubuntu-latest
 
-    try:
-        # 1. Crear la máquina virtual
-        subprocess.run(['VBoxManage', 'createvm', '--name', nombre_vm, '--ostype', 'Windows10_64', '--register'], check=True)
+    steps:
+      - uses: actions/checkout@v3
 
-        # 2. Configurar la memoria RAM
-        subprocess.run(['VBoxManage', 'modifyvm', nombre_vm, '--memory', str(memoria_ram_gb * 1024)], check=True)  # Convertir GB a MB
+      - name: Instalar VirtualBox (esto puede fallar por virtualización anidada)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y virtualbox
 
-        # 3. Configurar el disco duro virtual
-        subprocess.run(['VBoxManage', 'createhd', '--filename', f'{nombre_vm}.vdi', '--size', str(disco_duro_gb * 1024)], check=True)  # Convertir GB a MB
+      - name: Crear disco duro virtual
+        run: VBoxManage createhd --filename disco.vdi --size 10240 # 10GB
 
-        # 4. Configurar el controlador SATA
-        subprocess.run(['VBoxManage', 'storagectl', nombre_vm, '--name', 'SATA Controller', '--add', 'sata', '--controller', 'IntelAHCI'], check=True)
-
-        # 5. Adjuntar el disco duro al controlador SATA
-        subprocess.run(['VBoxManage', 'storageattach', nombre_vm, '--storagectl', 'SATA Controller', '--port', '0', '--device', '0', '--type', 'hdd', '--medium', f'{nombre_vm}.vdi'], check=True)
-
-        # 6. Adjuntar la ISO de Windows al controlador IDE
-        subprocess.run(['VBoxManage', 'storagectl', nombre_vm, '--name', 'IDE Controller', '--add', 'ide'], check=True)
-        subprocess.run(['VBoxManage', 'storageattach', nombre_vm, '--storagectl', 'IDE Controller', '--port', '1', '--device', '0', '--type', 'dvddrive', '--medium', iso_windows], check=True)
-
-        # 7. Configurar el orden de arranque para que inicie desde la ISO
-        subprocess.run(['VBoxManage', 'modifyvm', nombre_vm, '--boot1', 'dvd', '--boot2', 'disk', '--boot3', 'none', '--boot4', 'none'], check=True)
-
-        # 8. Configurar la red (opcional, NAT por defecto)
-        # Puedes personalizar la configuración de red según tus necesidades
-
-        print(f"Máquina virtual '{nombre_vm}' creada exitosamente.  Inicia la VM para comenzar la instalación de Windows.")
-
-    except subprocess.CalledProcessError as e:
-        print(f"Error al crear la máquina virtual: {e}")
-
-# Ejemplo de uso
-nombre_vm = 'MiWindowsVM'
-iso_windows = '/ruta/a/tu/imagen.iso'  # Reemplaza con la ruta real a tu ISO de Windows
-memoria_ram_gb = 4
-disco_duro_gb = 50
-
-crear_vm_windows(nombre_vm, iso_windows, memoria_ram_gb, disco_duro_gb)
+      - name: Imprimir la versión de VirtualBox (para verificar si está instalado)
+        run: VBoxManage --version
