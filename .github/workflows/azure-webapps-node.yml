@@ -1,78 +1,52 @@
-# This workflow will build and push a node.js application to an Azure Web App when a commit is pushed to your default branch.
-#
-# This workflow assumes you have already created the target Azure App Service web app.
-# For instructions see https://docs.microsoft.com/en-us/azure/app-service/quickstart-nodejs?tabs=linux&pivots=development-environment-cli
-#
-# To configure this workflow:
-#
-# 1. Download the Publish Profile for your Azure Web App. You can download this file from the Overview page of your Web App in the Azure Portal.
-#    For more information: https://docs.microsoft.com/en-us/azure/app-service/deploy-github-actions?tabs=applevel#generate-deployment-credentials
-#
-# 2. Create a secret in your repository named AZURE_WEBAPP_PUBLISH_PROFILE, paste the publish profile contents as the value of the secret.
-#    For instructions on obtaining the publish profile see: https://docs.microsoft.com/azure/app-service/deploy-github-actions#configure-the-github-secret
-#
-# 3. Change the value for the AZURE_WEBAPP_NAME. Optionally, change the AZURE_WEBAPP_PACKAGE_PATH and NODE_VERSION environment variables below.
-#
-# For more information on GitHub Actions for Azure: https://github.com/Azure/Actions
-# For more information on the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
-# For more samples to get started with GitHub Action workflows to deploy to Azure: https://github.com/Azure/actions-workflow-samples
+import os
+import subprocess
 
-on:
-  push:
-    branches: [ "main" ]
-  workflow_dispatch:
+def crear_vm_windows(nombre_vm, iso_windows, memoria_ram_gb, disco_duro_gb):
+    """
+    Crea una máquina virtual con Windows utilizando VirtualBox.
 
-env:
-  AZURE_WEBAPP_NAME: your-app-name    # set this to your application's name
-  AZURE_WEBAPP_PACKAGE_PATH: '.'      # set this to the path to your web app project, defaults to the repository root
-  NODE_VERSION: '20.x'                # set this to the node version to use
+    Args:
+        nombre_vm (str): El nombre de la máquina virtual.
+        iso_windows (str): La ruta al archivo ISO de Windows.
+        memoria_ram_gb (int): La cantidad de memoria RAM en GB.
+        disco_duro_gb (int): El tamaño del disco duro en GB.
+    """
 
-permissions:
-  contents: read
+    try:
+        # 1. Crear la máquina virtual
+        subprocess.run(['VBoxManage', 'createvm', '--name', nombre_vm, '--ostype', 'Windows10_64', '--register'], check=True)
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
+        # 2. Configurar la memoria RAM
+        subprocess.run(['VBoxManage', 'modifyvm', nombre_vm, '--memory', str(memoria_ram_gb * 1024)], check=True)  # Convertir GB a MB
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
-        cache: 'npm'
+        # 3. Configurar el disco duro virtual
+        subprocess.run(['VBoxManage', 'createhd', '--filename', f'{nombre_vm}.vdi', '--size', str(disco_duro_gb * 1024)], check=True)  # Convertir GB a MB
 
-    - name: npm install, build, and test
-      run: |
-        npm install
-        npm run build --if-present
-        npm run test --if-present
+        # 4. Configurar el controlador SATA
+        subprocess.run(['VBoxManage', 'storagectl', nombre_vm, '--name', 'SATA Controller', '--add', 'sata', '--controller', 'IntelAHCI'], check=True)
 
-    - name: Upload artifact for deployment job
-      uses: actions/upload-artifact@v4
-      with:
-        name: node-app
-        path: .
+        # 5. Adjuntar el disco duro al controlador SATA
+        subprocess.run(['VBoxManage', 'storageattach', nombre_vm, '--storagectl', 'SATA Controller', '--port', '0', '--device', '0', '--type', 'hdd', '--medium', f'{nombre_vm}.vdi'], check=True)
 
-  deploy:
-    permissions:
-      contents: none
-    runs-on: ubuntu-latest
-    needs: build
-    environment:
-      name: 'Development'
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
+        # 6. Adjuntar la ISO de Windows al controlador IDE
+        subprocess.run(['VBoxManage', 'storagectl', nombre_vm, '--name', 'IDE Controller', '--add', 'ide'], check=True)
+        subprocess.run(['VBoxManage', 'storageattach', nombre_vm, '--storagectl', 'IDE Controller', '--port', '1', '--device', '0', '--type', 'dvddrive', '--medium', iso_windows], check=True)
 
-    steps:
-    - name: Download artifact from build job
-      uses: actions/download-artifact@v4
-      with:
-        name: node-app
+        # 7. Configurar el orden de arranque para que inicie desde la ISO
+        subprocess.run(['VBoxManage', 'modifyvm', nombre_vm, '--boot1', 'dvd', '--boot2', 'disk', '--boot3', 'none', '--boot4', 'none'], check=True)
 
-    - name: 'Deploy to Azure WebApp'
-      id: deploy-to-webapp
-      uses: azure/webapps-deploy@v2
-      with:
-        app-name: ${{ env.AZURE_WEBAPP_NAME }}
-        publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-        package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+        # 8. Configurar la red (opcional, NAT por defecto)
+        # Puedes personalizar la configuración de red según tus necesidades
+
+        print(f"Máquina virtual '{nombre_vm}' creada exitosamente.  Inicia la VM para comenzar la instalación de Windows.")
+
+    except subprocess.CalledProcessError as e:
+        print(f"Error al crear la máquina virtual: {e}")
+
+# Ejemplo de uso
+nombre_vm = 'MiWindowsVM'
+iso_windows = '/ruta/a/tu/imagen.iso'  # Reemplaza con la ruta real a tu ISO de Windows
+memoria_ram_gb = 4
+disco_duro_gb = 50
+
+crear_vm_windows(nombre_vm, iso_windows, memoria_ram_gb, disco_duro_gb)
